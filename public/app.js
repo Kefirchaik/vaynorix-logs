@@ -22,13 +22,14 @@ function renderNav(){const nav=el('navigation');nav.textContent='';let last='';
  if(c.id==='families'){const familyButton=cell('button','','nav-item');familyButton.id='familyNav';familyButton.dataset.section='family-overview';familyButton.append(cell('span','♜'),document.createTextNode('Семьи · Обзор'));familyButton.addEventListener('click',showFamilies);nav.append(familyButton);}
  const button=cell('button','', 'nav-item');button.dataset.section=c.id;
  button.append(cell('span','▣'),document.createTextNode(c.id==='families'?'История семей (журнал)':c.title));button.addEventListener('click',()=>switchLog(c.id));nav.append(button);}
+ const riskButton=cell('button','','nav-item');riskButton.id='riskNav';riskButton.dataset.section='risk';riskButton.append(cell('span','⚑'),document.createTextNode('Антифрод · Проверки'));riskButton.addEventListener('click',showRisk);nav.append(riskButton);
  if(user.role==='owner'){
   const button=cell('button','','nav-item');button.id='adminNav';button.append(cell('span','⚙'),document.createTextNode('Администраторы'));
   button.addEventListener('click',showAdmins);nav.append(button);
  }
 }
 async function switchLog(section){
- active=section;page=1;el('familyView').classList.add('hidden');el('adminsView').classList.add('hidden');el('logsView').classList.remove('hidden');el('hero').classList.toggle('hidden',section!=='money');
+ active=section;page=1;el('riskView').classList.add('hidden');el('familyView').classList.add('hidden');el('adminsView').classList.add('hidden');el('logsView').classList.remove('hidden');el('hero').classList.toggle('hidden',section!=='money');
  el('search').value='';el('account').value='';el('dateFrom').value='';el('dateTo').value='';
  const c=catalog.find(x=>x.id===section);el('sectionTitle').textContent=c.title;el('sectionGroup').textContent=c.group.toUpperCase();el('breadcrumb').textContent=c.group+' / '+c.title;
  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.section===section));
@@ -51,14 +52,14 @@ async function load(){
   const result=await api('logs',{params:filters});if(request!==logsRequest||active!==requestedSection)return;next=result.hasNext;
   const thead=el('tableHead'),tbody=el('tableBody');thead.textContent='';tbody.textContent='';
   const header=document.createElement('tr');for(const k of result.columns)header.append(cell('th',labels[k]||k));thead.append(header);
-  for(const row of result.rows){const tr=document.createElement('tr');for(const key of result.columns){const value=displayValue(key,row[key]);const td=cell('td',value);td.title=value;td.dataset.label=labels[key]||key;tr.append(td);}tbody.append(tr);}
+  for(const row of result.rows){const tr=document.createElement('tr');for(const key of result.columns){const value=displayValue(key,row[key]);const td=cell('td',value);td.title=value;td.dataset.label=labels[key]||key;if(requestedSection==='money'&&key==='money'&&Math.abs(Number(row[key]))>=1000000){td.classList.add('money-alert');td.title='Крупная операция — нужна ручная проверка. Не доказательство нарушения';}tr.append(td);}tbody.append(tr);}
   if(!result.rows.length){const tr=document.createElement('tr');const td=cell('td','Нет записей по выбранным фильтрам','empty-cell');td.colSpan=result.columns.length;tr.append(td);tbody.append(tr);}
   el('resultCount').textContent=`Записей на странице: ${result.rows.length}`;el('pageText').textContent=`Страница ${requestedPage}`;el('prev').disabled=page===1;el('next').disabled=!next;
  }catch(err){if(request!==logsRequest||active!==requestedSection)return;el('resultCount').textContent='Ошибка';el('tableBody').replaceChildren(cell('tr',''));el('tableHead').textContent='';el('sectionCaption').textContent=err.message;}
 }
 async function showAdmins(){
  if(user.role!=='owner')return;
- el('familyView').classList.add('hidden');el('adminsView').classList.remove('hidden');el('logsView').classList.add('hidden');el('hero').classList.add('hidden');el('sectionTitle').textContent='Администраторы';el('sectionGroup').textContent='УПРАВЛЕНИЕ ДОСТУПОМ';el('breadcrumb').textContent='Панель / Администраторы';
+ el('riskView').classList.add('hidden');el('familyView').classList.add('hidden');el('adminsView').classList.remove('hidden');el('logsView').classList.add('hidden');el('hero').classList.add('hidden');el('sectionTitle').textContent='Администраторы';el('sectionGroup').textContent='УПРАВЛЕНИЕ ДОСТУПОМ';el('breadcrumb').textContent='Панель / Администраторы';
  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.id==='adminNav'));setMenu(false,true);
  const r=await api('admins'),parent=el('adminSlots');parent.textContent='';
  for(const admin of r.admins){
@@ -83,7 +84,7 @@ const fmtNum=n=>Number(n||0).toLocaleString('ru-RU');
 function familyError(target,error){target.replaceChildren(cell('div',error.message||String(error),'family-error'));}
 function familyNavState(){document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.id==='familyNav'));}
 async function showFamilies(){
- el('adminsView').classList.add('hidden');el('logsView').classList.add('hidden');el('familyView').classList.remove('hidden');el('hero').classList.add('hidden');
+ el('riskView').classList.add('hidden');el('adminsView').classList.add('hidden');el('logsView').classList.add('hidden');el('familyView').classList.remove('hidden');el('hero').classList.add('hidden');
  el('sectionTitle').textContent='Управление просмотром семей';el('sectionGroup').textContent='СООБЩЕСТВО';el('sectionCaption').textContent='Участники, лидеры, деньги и история — только чтение';el('breadcrumb').textContent='Сообщество / Семьи';familyNavState();
  setMenu(false,true);familyListPage=1;chosenFamily=null;el('familySelected').classList.add('hidden');el('familyEmpty').classList.remove('hidden');await loadFamilies();
 }
@@ -153,7 +154,7 @@ el('filterButton').onclick=()=>{page=1;load();};el('resetButton').onclick=()=>{e
 el('prev').onclick=()=>{if(page>1){page--;load();}};el('next').onclick=()=>{if(next){page++;load();}};
 const mobileNav=window.matchMedia('(max-width: 1050px)');
 function setMenu(open,restoreFocus=false){
- const menu=el('sidebar'),toggle=el('toggleNav'),wasOpen=menu.classList.contains('open');
+ const menu=el('sidebar'), toggle=el('toggleNav'),wasOpen=menu.classList.contains('open');
  const show=Boolean(open&&mobileNav.matches);
  menu.classList.toggle('open',show);
  el('menuBackdrop').classList.toggle('hidden',!show);
