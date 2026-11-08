@@ -4,21 +4,62 @@ const mysql = require('mysql2/promise');
 const catalog = require('./catalog');
 const COOKIE = 'vaynorix_session';
 let db;
-const required = ['DB_HOST','DB_NAME','DB_USER','DB_PASSWORD','OWNER_USERNAME','OWNER_PASSWORD','SESSION_SECRET','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN'];
-const ready = () => required.every(k => process.env[k] && process.env[k].length > 0) && process.env.OWNER_PASSWORD.length >= 12 && process.env.SESSION_SECRET.length >= 32;
+const required = ['DB_HOST','DB_NAME','DB_USER','DB_PASSWORD','SESSION_SECRET'];
 const env = k => process.env[k];
+const ready = () => required.every(k => env(k) && env(k).length > 0) && env('SESSION_SECRET').length >= 32;
 const safeEqual = (a,b) => { const x=Buffer.from(String(a)), y=Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x,y); };
 const digest = a => crypto.createHash('sha256').update(String(a)).digest('hex');
 const key = slot => `vaynorix:admin:${slot}`;
-async function redis(command,...args) {
-  const response=await fetch(env('UPSTASH_REDIS_REST_URL').replace(/\/$/,'')+'/', {
-    method:'POST',headers:{Authorization:'Bearer '+env('UPSTASH_REDIS_REST_TOKEN'),'Content-Type':'application/json'},
-    body:JSON.stringify([command,...args]),signal:AbortSignal.timeout(5000)
-  });
-  if(!response.ok) throw new Error('Redis unavailable');
-  const data=await response.json();
-  if(data.error) throw new Error('Redis command error');
-  return data.result;
+// All application accounts and login rate limits live in the EXISTING game MariaDB.
+// No new SQL user, no Redis. Only the two vaynorix_logs_* tables are ever written.
+async function store(command, id, value) {
+ const pool=connection();
+ const match=/^vaynorix:admin:([012])$/.exec(id);
+ if(match){
+  const slot=Number(match[1]);
+  if(command==='GET'){
+   const [rows]=await pool.execute('SELECT username,password_hash,enabled,version FROM `vaynorix_logs_users` WHERE slot=? LIMIT 1',[slot]);
+   if(!rows.length) return null;
+   const u=rows[0];
+   return JSON.stringify({username:u.username,passwordHash:u.password_hash,enabled:Boolean(u.enabled),version:u.version});
+  }
+  if(command==='SET' && slot!==0){
+   const u=JSON.parse(value);
+   await pool.execute(`INSERT INTO \`vaynorix_logs_users\` (slot,role,username,password_hash,enabled,version)
+    VALUES (?,'admin',?,?,1,?) ON DUPLICATE KEY UPDATE username=VALUES(username),password_hash=VALUES(password_hash),enabled=1,version=VALUES(version)`,[slot,u.username,u.passwordHash,u.version]);
+   return 'OK';
+  }
+  if(command==='DEL' && slot!==0){
+   await pool.execute('DELETE FROM `vaynorix_logs_users` WHERE slot=? AND role=\'admin\'',[slot]);
+   return 1;
+  }
+ }
+ const login=/^vaynorix:login:([a-f0-9]{64})$/.exec(id);
+ if(login){
+  const fingerprint=login[1];
+  if(command==='INCR'){
+   await pool.execute(`INSERT INTO \`vaynorix_logs_login_attempts\` (fingerprint,attempts,expires_at)
+    VALUES (?,1,DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE))
+    ON DUPLICATE KEY UPDATE
+    attempts=IF(expires_at<=UTC_TIMESTAMP(),1,attempts+1),
+    expires_at=IF(expires_at<=UTC_TIMESTAMP(),DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE),expires_at)`,[fingerprint]);
+   const [rows]=await pool.execute('SELECT attempts FROM `vaynorix_logs_login_attempts` WHERE fingerprint=?',[fingerprint]);
+   return Number(rows[0]?.attempts||1);
+  }
+  if(command==='EXPIRE') return 1; // TTL is set atomically by INCR in MariaDB.
+  if(command==='DEL'){
+   await pool.execute('DELETE FROM `vaynorix_logs_login_attempts` WHERE fingerprint=?',[fingerprint]);return 1;
+  }
+ }
+ throw new Error('Unsupported auth storage operation');
+}
+async function seedOwner(username,password){
+ const starterName=env('OWNER_USERNAME'),starterPassword=env('OWNER_PASSWORD');
+ if(!starterName||!starterPassword||starterPassword.length<12||!/^[A-Za-z0-9_]{3,24}$/.test(starterName))return;
+ if(username.toLowerCase()!==starterName.toLowerCase()||!safeEqual(digest(password),digest(starterPassword)))return;
+ // A one-time bootstrap: after first login Owner remains in MariaDB, even if bootstrap env vars are removed.
+ await connection().execute(`INSERT IGNORE INTO \`vaynorix_logs_users\` (slot,role,username,password_hash,enabled,version)
+  VALUES (0,'owner',?,?,1,?)`,[starterName,passwordHash(starterPassword),crypto.randomBytes(12).toString('hex')]);
 }
 function passwordHash(password) {
   const salt=crypto.randomBytes(16).toString('hex');
@@ -49,13 +90,13 @@ function verifyToken(req){
 async function currentUser(req){
  const p=verifyToken(req);
  if(!p) return null;
- if(p.role==='owner') return (p.username===env('OWNER_USERNAME') && p.version===digest(env('OWNER_PASSWORD'))) ? p : null;
  const slot=Number(p.slot);
- if(![1,2].includes(slot)) return null;
- const raw=await redis('GET',key(slot));
- if(!raw) return null;
+ if(![0,1,2].includes(slot)) return null;
+ const raw=await store('GET',key(slot));
+ if(!raw)return null;
  const u=JSON.parse(raw);
- return u.enabled && u.username===p.username && u.version===p.version ? p:null;
+ const role=slot===0?'owner':'admin';
+ return u.enabled && p.role===role && u.username===p.username && u.version===p.version ? p:null;
 }
 function json(res,status,data){res.statusCode=status;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(data));}
 function reject(res,status,message){return json(res,status,{error:message});}
@@ -69,32 +110,28 @@ function ensureOwner(user,res){if(!user||user.role!=='owner'){reject(res,403,'Т
 async function login(req,res){
  const b=parseBody(req), username=String(b.username||'').trim(), password=String(b.password||'');
  if(username.length<3||username.length>32||password.length>256)return reject(res,400,'Неверные данные');
+ await seedOwner(username,password);
  const ip=String(req.headers['x-forwarded-for']||req.socket?.remoteAddress||'').split(',')[0].trim();
  const limiter='vaynorix:login:'+digest(ip+':'+username.toLowerCase());
- const attempts=Number(await redis('INCR',limiter));
- if(attempts===1)await redis('EXPIRE',limiter,900);
+ const attempts=Number(await store('INCR',limiter));
  if(attempts>5)return reject(res,429,'Слишком много попыток. Повтори через 15 минут.');
  let payload=null;
- if(username.toLowerCase()===env('OWNER_USERNAME').toLowerCase()&&safeEqual(digest(password),digest(env('OWNER_PASSWORD')))){
-  payload={role:'owner',username:env('OWNER_USERNAME'),version:digest(env('OWNER_PASSWORD'))};
- }else{
-  for(const slot of [1,2]){
-   const raw=await redis('GET',key(slot));if(!raw)continue;
-   const u=JSON.parse(raw);
-   if(u.enabled&&u.username.toLowerCase()===username.toLowerCase()&&matchesHash(password,u.passwordHash)){
-    payload={role:'admin',username:u.username,slot,version:u.version};break;
-   }
+ for(const slot of [0,1,2]){
+  const raw=await store('GET',key(slot));if(!raw)continue;
+  const u=JSON.parse(raw);
+  if(u.enabled&&u.username.toLowerCase()===username.toLowerCase()&&matchesHash(password,u.passwordHash)){
+   payload={role:slot===0?'owner':'admin',username:u.username,slot,version:u.version};break;
   }
  }
  if(!payload)return reject(res,401,'Неправильный логин или пароль');
- await redis('DEL',limiter);
+ await store('DEL',limiter);
  cookie(res,token({...payload,exp:Date.now()+8*3600*1000}),8*3600);
  return json(res,200,{user:{username:payload.username,role:payload.role}});
 }
 async function adminList(res){
  const admins=[];
  for(const slot of [1,2]){
-  const raw=await redis('GET',key(slot));
+  const raw=await store('GET',key(slot));
   if(raw){const u=JSON.parse(raw);admins.push({slot,username:u.username,enabled:u.enabled});}
   else admins.push({slot,username:'',enabled:false});
  }
@@ -103,14 +140,16 @@ async function adminList(res){
 async function editAdmin(req,res,remove){
  const b=parseBody(req),slot=Number(b.slot);
  if(![1,2].includes(slot))return reject(res,400,'Неверный слот');
- if(remove){await redis('DEL',key(slot));return json(res,200,{ok:true});}
+ if(remove){await store('DEL',key(slot));return json(res,200,{ok:true});}
  const username=String(b.username||'').trim(),password=String(b.password||'');
- if(!/^[A-Za-z0-9_]{3,24}$/.test(username)||username.toLowerCase()===env('OWNER_USERNAME').toLowerCase())return reject(res,400,'Логин: 3–24 латинских символа, цифры или _');
+ if(!/^[A-Za-z0-9_]{3,24}$/.test(username))return reject(res,400,'Логин: 3–24 латинских символа, цифры или _');
  if(password.length<12||password.length>128)return reject(res,400,'Пароль должен содержать 12–128 символов');
- const other=await redis('GET',key(slot===1?2:1));
+ const ownerRaw=await store('GET',key(0));
+ if(ownerRaw&&JSON.parse(ownerRaw).username.toLowerCase()===username.toLowerCase())return reject(res,409,'Этот логин занят Owner');
+ const other=await store('GET',key(slot===1?2:1));
  if(other&&JSON.parse(other).username.toLowerCase()===username.toLowerCase())return reject(res,409,'Такой логин уже существует');
  const obj={username,passwordHash:passwordHash(password),enabled:true,version:crypto.randomBytes(12).toString('hex')};
- await redis('SET',key(slot),JSON.stringify(obj));
+ await store('SET',key(slot),JSON.stringify(obj));
  json(res,200,{ok:true});
 }
 function connection(){

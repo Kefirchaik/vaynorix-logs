@@ -1,60 +1,54 @@
-# VAYNORIX RP · Logs Control Center
+# VAYNORIX RP — Logs Control Center (Vercel)
 
-Private staff-facing read-only game logs portal for **Vercel**. 19 whitelisted log categories based on the VAYNORIX MariaDB schema from 2026-11-08. No PHP, no email, no public registration. One Owner + up to two Admins (created/removed by Owner). Admin passwords are salted scrypt hashes in a separate Redis database, never the game database.
+**Одна игровая MariaDB. Один существующий пользователь MySQL `gs325627`. Никакого Redis, регистрации по почте, подтверждений или дополнительных пользователей БД.**
 
-## Deploy on Vercel (5–10 minutes)
+Сайт показывает 19 игровых журналов, работает на Vercel через Node.js и использует существующую базу MariaDB на MAZE Hosting. Внутри базы добавляются **только две новые служебные таблицы**: `vaynorix_logs_users` (Owner + максимум 2 Admin) и `vaynorix_logs_login_attempts` (лимит попыток входа). Логины и scrypt-хеши паролей хранятся **в той же базе, что и игра**. Игровые таблицы не изменяются сайтом.
 
-1. Open [Vercel → New Project](https://vercel.com/new), choose **Import Git Repository**, select `Kefirchaik/vaynorix-logs`.
-2. **Framework Preset:** `Other`. **Root Directory:** `./` (repository root). **Build Command:** leave blank / override off. **Output Directory:** leave blank / override off. **Install Command:** default `npm install`. Use Node.js 22.x if available.
-3. In **Storage / Marketplace**, create **Upstash Redis**, connect it to the Vercel project. Copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to **Settings → Environment Variables** if they were not added automatically. Redis is needed for persistent Admin accounts and login rate limiting; Vercel functions have no persistent local disk.
-4. Create a separate **SELECT-only** MySQL account for your VAYNORIX MariaDB database and make sure Vercel functions can reach its host and port. Avoid using your SA-MP server's privileged MySQL account. Do not upload the SQL dump to GitHub or Vercel.
-5. Set the variables below for **Production** (and Preview only if intentionally testing there). Then click **Deploy / Redeploy**.
-6. Open the assigned `*.vercel.app` domain and log in with the `OWNER_USERNAME` and `OWNER_PASSWORD` you chose. In **Администраторы**, create up to two logins with passwords, without email or confirmation.
+## Установка
 
-## Environment Variables (Vercel → Project → Settings → Environment Variables)
+1. Открой phpMyAdmin **существующей игровой базы**. Выбери базу `gs325627` (или её фактическое имя на панели) → **SQL** → вставь и выполни содержимое [`SCHEMA.sql`](./SCHEMA.sql). Будут созданы только 2 таблицы. Не надо создавать пользователя MySQL и выполнять `GRANT`.
+2. На [vercel.com/new](https://vercel.com/new) выбери **Import Git Repository → Kefirchaik/vaynorix-logs**, **Framework: Other**, **Root: `./`**, остальное по умолчанию.
+3. В **Project → Settings → Environment Variables** добавь значения из `.env.example` с **настоящими** данными подключения MySQL пользователя **`gs325627`**. Для Owner сначала задай `OWNER_USERNAME` и `OWNER_PASSWORD` (пароль длиной от 12 символов); придумай `SESSION_SECRET` из 64 случайных hex-символов.
+4. Нажми **Deploy**. Открой сайт `*.vercel.app` и войди под Owner. При **первом успешном входе** Owner создаётся в `vaynorix_logs_users` (slot `0`) с **хешем** пароля. Два администратора создаются Owner внутри панели (slot `1` и `2`).
+5. После успешного входа и проверки панели **удали `OWNER_USERNAME` и `OWNER_PASSWORD` из Vercel Environment Variables и сделай Redeploy**. Owner продолжит входить с тем же логином и паролем — он хранится в MariaDB. `SESSION_SECRET` оставь.
 
-| Key | What to enter |
+**Без Upstash Redis, без внешнего хранилища, без создания другого MySQL-пользователя.**
+
+## Переменные окружения Vercel
+
+| Название | Значение |
 | --- | --- |
-| `DB_HOST` | **MySQL host**, not SA-MP game IP/UDP port |
-| `DB_PORT` | MySQL TCP port, usually `3306` |
-| `DB_NAME` | Game database name (e.g. `gs325627`) |
-| `DB_USER` | Dedicated MySQL user with **SELECT** only |
-| `DB_PASSWORD` | Password for dedicated read-only MySQL user |
-| `DB_SSL` | `true` if MySQL provider supports proper TLS, otherwise `false` |
-| `OWNER_USERNAME` | Your desired Owner login, e.g. `Owner` |
-| `OWNER_PASSWORD` | **Choose a strong password (12+ characters)**, never commit |
-| `SESSION_SECRET` | Random string 32+ characters, ideally 64 hex chars |
-| `UPSTASH_REDIS_REST_URL` | From Upstash Redis in Vercel |
-| `UPSTASH_REDIS_REST_TOKEN` | From Upstash Redis in Vercel |
+| `DB_HOST` | MySQL/MariaDB hostname от MAZE Hosting, **не игровой порт `1481`** |
+| `DB_PORT` | Обычно `3306` (уточни в панели) |
+| `DB_NAME` | Имя существующей игровой базы, предположительно `gs325627` |
+| `DB_USER` | **`gs325627`** — существующий пользователь MySQL |
+| `DB_PASSWORD` | Его текущий пароль MySQL |
+| `DB_SSL` | `true` только при настроенном SSL/TLS на стороне БД; иначе `false` |
+| `SESSION_SECRET` | Случайная строка из 32+ символов; рекомендуется 64 hex |
+| `OWNER_USERNAME` | Только для первого входа, например `Owner` |
+| `OWNER_PASSWORD` | Только для первого входа, надёжный пароль длиной 12+ |
 
-To generate `SESSION_SECRET` locally, run:
+Можно сгенерировать `SESSION_SECRET` командой на ПК: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
+## Доступ к базе с Vercel
 
-**DB access is read only.** If your hosting provider blocks remote MySQL, you need to enable secure remote access or host a private database gateway. **The game server port `1481` is not your DB port.** Connecting to local `127.0.0.1` from Vercel will *not* reach the game host.
+Vercel подключается к MariaDB **из сети Vercel**, не из сети игрового сервера. В панели MAZE Hosting должен быть разрешён удалённый доступ к MariaDB для **существующего** пользователя `gs325627`; `127.0.0.1` в `DB_HOST` не сработает. Если хостер вообще не позволяет внешние подключения, на Vercel сайт без сетевого посредника работать не сможет. Пользователь `gs325627` должен иметь как минимум `SELECT` для игровых таблиц и `SELECT/INSERT/UPDATE/DELETE` для двух новых таблиц; **не нужно создавать другой пользователь БД**.
 
-## Security
+**Важно:** из-за использования одного SQL-пользователя у соединения нет запрета на изменение игровых таблиц на уровне прав СУБД. Поэтому сайт запрограммирован только на `SELECT` для игровых журналов; `INSERT/UPDATE/DELETE` выполняются строго для таблиц `vaynorix_logs_users` и `vaynorix_logs_login_attempts`. Это ограничение приложения, а не MySQL GRANT.
 
-- Backend allows only whitelisted SELECT queries; raw table/column names from visitors are never evaluated.
-- Authentication uses Secure/HttpOnly/SameSite=Strict cookies with HMAC signatures, 8-hour expiry, rate limiting, and admin session revocation on account reset/deletion.
-- Admins do not see full player IPs; Owner can. Neither role can see game passwords, salts, or banking PINs.
-- Redis account storage is separate from gameplay data. Owner credentials are read from Vercel environment variables.
-- No source-code passwords, production SQL data, or token files are committed. GitHub repository can be public because the code has no secrets; if desired, make it private.
-- Do not place a writable database password in Vercel. Test the DB account with `SHOW GRANTS` and grant only `SELECT`.
+## Безопасность и проверка
 
-## Troubleshooting
-
-- **503 not configured**: a required Environment Variable is missing, or OWNER_PASSWORD/SESSION_SECRET is too short. Redeploy after updating variables.
-- **503 Redis unavailable**: check Upstash REST URL/token and project integration.
-- **Journal unavailable**: check database remote TCP access, credentials and table schema in the Vercel Function Logs. Grant `SELECT` on all required log tables and `accounts`/`bank_accounts` for name joins.
-- **Error after deploy**: check the latest deployment under **Vercel → Project → Deployments → Functions / Runtime Logs**.
-- No SA-MP `.amx`, PHP runtime, additional game MySQL migrations, or email service required.
-
-## Local sanity check
+- Нет публичной регистрации, восстановления через email, подтверждений, Redis, сторонних авторизаций.
+- Owner имеет слот `0`, администраторы — только `1` и `2`; ограничение также закреплено CHECK в MariaDB.
+- Пароли в БД хешируются scrypt с отдельной солью; игровой пароль, соли и банковские PIN не показываются.
+- Cookie: `HttpOnly`, `Secure`, `SameSite=Strict`; сессии подписаны `SESSION_SECRET` и отключаются при замене/удалении аккаунта.
+- API игровых логов использует только заранее определённые таблицы и столбцы, значения передаются через SQL-плейсхолдеры.
+- Сайт не пишет в таблицы игрока, денег, имущества или банов. Перед созданием служебных таблиц сделай резервную копию БД.
+- Ничего секретного не сохраняй в `.env.example`, GitHub Issues или README. Реальные значения — **только** в Vercel Env.
 
 ```bash
 npm install
 npm run check
 ```
+
+После Deploy смотри **Vercel → Logs**. Если ошибка `ECONNREFUSED` / `ETIMEDOUT`, проверь MySQL host и разрешение удалённого подключения; `ER_NO_SUCH_TABLE` означает, что `SCHEMA.sql` не был выполнен в нужной БД.
