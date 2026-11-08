@@ -8,7 +8,7 @@ const api=async(action,opts={})=>{
 };
 function note(message,success=false){const box=el('loginError');box.textContent=message;box.classList.toggle('success',success);}
 function cell(tag,text,css){const e=document.createElement(tag);e.textContent=String(text??'—');if(css)e.className=css;return e;}
-function setView(authenticated){el('auth').classList.toggle('hidden',authenticated);el('shell').classList.toggle('hidden',!authenticated);}
+function setView(authenticated){el('auth').classList.toggle('hidden',authenticated);el('shell').classList.toggle('hidden',!authenticated);if(!authenticated)setMenu(false);}
 async function initialize(){
  try{const r=await api('me');user=r.user;setView(true);await home();}
  catch{setView(false);}
@@ -32,8 +32,9 @@ async function switchLog(section){
  el('search').value='';el('account').value='';el('dateFrom').value='';el('dateTo').value='';
  const c=catalog.find(x=>x.id===section);el('sectionTitle').textContent=c.title;el('sectionGroup').textContent=c.group.toUpperCase();el('breadcrumb').textContent=c.group+' / '+c.title;
  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.section===section));
- el('shell').querySelector('.sidebar').classList.remove('open');await load();
+ setMenu(false,true);await load();
 }
+let logsRequest=0;
 const labels={id:'ID',uid:'Аккаунт',acc_id:'Счёт / аккаунт',account_id:'Аккаунт',user_id:'Аккаунт',type:'Тип',description:'Описание',uip:'IP',ip:'IP',player_nick:'Ник',time:'Время',created_at:'Дата',completed_at:'Дата',activated_at:'Дата',stat_date:'Дата',money:'Сумма',donate:'BC',amount:'Сумма',final_price:'Цена',bid:'Бизнес',auction_id:'Аукцион',admin:'Администратор',name:'Игрок',reason:'Причина',data:'Данные',status:'Статус',text:'Сообщение'};
 const dateFields=new Set(['time','created_at','completed_at','activated_at','stat_date','ban_time','unban_time']);
 function displayValue(key,value){
@@ -43,21 +44,22 @@ function displayValue(key,value){
  return String(value);
 }
 async function load(){
+ const request=++logsRequest, requestedSection=active, requestedPage=page;
  el('resultCount').textContent='Загрузка...';
  const filters={section:active,page:page,q:el('search').value.trim(),account:el('account').value.trim(),from:el('dateFrom').value,to:el('dateTo').value};
  try{
-  const result=await api('logs',{params:filters});next=result.hasNext;
+  const result=await api('logs',{params:filters});if(request!==logsRequest||active!==requestedSection)return;next=result.hasNext;
   const thead=el('tableHead'),tbody=el('tableBody');thead.textContent='';tbody.textContent='';
   const header=document.createElement('tr');for(const k of result.columns)header.append(cell('th',labels[k]||k));thead.append(header);
-  for(const row of result.rows){const tr=document.createElement('tr');for(const key of result.columns){const value=displayValue(key,row[key]);const td=cell('td',value);td.title=value;tr.append(td);}tbody.append(tr);}
+  for(const row of result.rows){const tr=document.createElement('tr');for(const key of result.columns){const value=displayValue(key,row[key]);const td=cell('td',value);td.title=value;td.dataset.label=labels[key]||key;tr.append(td);}tbody.append(tr);}
   if(!result.rows.length){const tr=document.createElement('tr');const td=cell('td','Нет записей по выбранным фильтрам','empty-cell');td.colSpan=result.columns.length;tr.append(td);tbody.append(tr);}
-  el('resultCount').textContent=`Записей на странице: ${result.rows.length}`;el('pageText').textContent=`Страница ${page}`;el('prev').disabled=page===1;el('next').disabled=!next;
- }catch(err){el('resultCount').textContent='Ошибка';el('tableBody').replaceChildren(cell('tr',''));el('tableHead').textContent='';el('sectionCaption').textContent=err.message;}
+  el('resultCount').textContent=`Записей на странице: ${result.rows.length}`;el('pageText').textContent=`Страница ${requestedPage}`;el('prev').disabled=page===1;el('next').disabled=!next;
+ }catch(err){if(request!==logsRequest||active!==requestedSection)return;el('resultCount').textContent='Ошибка';el('tableBody').replaceChildren(cell('tr',''));el('tableHead').textContent='';el('sectionCaption').textContent=err.message;}
 }
 async function showAdmins(){
  if(user.role!=='owner')return;
  el('familyView').classList.add('hidden');el('adminsView').classList.remove('hidden');el('logsView').classList.add('hidden');el('hero').classList.add('hidden');el('sectionTitle').textContent='Администраторы';el('sectionGroup').textContent='УПРАВЛЕНИЕ ДОСТУПОМ';el('breadcrumb').textContent='Панель / Администраторы';
- document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.id==='adminNav'));
+ document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.id==='adminNav'));setMenu(false,true);
  const r=await api('admins'),parent=el('adminSlots');parent.textContent='';
  for(const admin of r.admins){
   const card=cell('div','','admin-slot'),title=cell('h3',`Admin #${admin.slot}`),description=cell('p',admin.username?`Аккаунт: ${admin.username}`:'Свободное место');
@@ -83,7 +85,7 @@ function familyNavState(){document.querySelectorAll('.nav-item').forEach(n=>n.cl
 async function showFamilies(){
  el('adminsView').classList.add('hidden');el('logsView').classList.add('hidden');el('familyView').classList.remove('hidden');el('hero').classList.add('hidden');
  el('sectionTitle').textContent='Управление просмотром семей';el('sectionGroup').textContent='СООБЩЕСТВО';el('sectionCaption').textContent='Участники, лидеры, деньги и история — только чтение';el('breadcrumb').textContent='Сообщество / Семьи';familyNavState();
- el('shell').querySelector('.sidebar').classList.remove('open');familyListPage=1;chosenFamily=null;el('familySelected').classList.add('hidden');el('familyEmpty').classList.remove('hidden');await loadFamilies();
+ setMenu(false,true);familyListPage=1;chosenFamily=null;el('familySelected').classList.add('hidden');el('familyEmpty').classList.remove('hidden');await loadFamilies();
 }
 async function loadFamilies(){
  const list=el('familyList');list.replaceChildren(cell('div','Загрузка семей...','family-placeholder'));
@@ -124,7 +126,7 @@ async function loadFamilyMembers(){
  try{
   const r=await api('family-members',{params:{family:fid,page:memberPage,q:el('familyMemberSearch').value.trim()}});if(chosenFamily!==fid||familyTab!=='members')return;
   memberNext=r.hasNext;tbody.textContent='';
-  for(const m of r.rows){const tr=document.createElement('tr');const rank=window.familyRankNames?.[m.family_rang]||`Ранг ${m.family_rang}`;for(const x of [m.id,m.name,`${m.family_rang} · ${rank}`,m.level,displayValue('time',m.last_login)])tr.append(cell('td',x));tbody.append(tr);}
+  for(const m of r.rows){const tr=document.createElement('tr');const rank=window.familyRankNames?.[m.family_rang]||`Ранг ${m.family_rang}`;[m.id,m.name,`${m.family_rang} · ${rank}`,m.level,displayValue('time',m.last_login)].forEach((x,i)=>{const td=cell('td',x);td.dataset.label=['ID','Участник','Ранг','Уровень','Последний вход'][i];tr.append(td);});tbody.append(tr);}
   if(!r.rows.length)insertEmpty(tbody,5,'Участники не найдены');el('familyMembersPage').textContent=`Страница ${memberPage}`;el('familyMembersPrev').disabled=memberPage===1;el('familyMembersNext').disabled=!memberNext;
  }catch(e){insertEmpty(tbody,5,e.message);}
 }
@@ -133,7 +135,7 @@ async function loadFamilyHistory(){
  try{
   const r=await api('family-history',{params:{family:fid,page:historyPage,type:el('familyHistoryType').value,from:el('familyHistoryFrom').value,to:el('familyHistoryTo').value}});if(chosenFamily!==fid||familyTab!=='history')return;
   historyNext=r.hasNext;tbody.textContent='';
-  for(const log of r.rows){const tr=document.createElement('tr');for(const x of [displayValue('time',log.time),familyLabels[log.type]||`Тип ${log.type}`,log.actor_name||`#${log.player}`,log.target_name||(log.to_player?`#${log.to_player}`:'—'),log.text])tr.append(cell('td',x));tbody.append(tr);}
+  for(const log of r.rows){const tr=document.createElement('tr');[displayValue('time',log.time),familyLabels[log.type]||`Тип ${log.type}`,log.actor_name||`#${log.player}`,log.target_name||(log.to_player?`#${log.to_player}`:'—'),log.text].forEach((x,i)=>{const td=cell('td',x);td.dataset.label=['Дата','Действие','Игрок','Кого касается','Описание'][i];tr.append(td);});tbody.append(tr);}
   if(!r.rows.length)insertEmpty(tbody,5,'Действий не найдено');el('familyHistoryPage').textContent=`Страница ${historyPage}`;el('familyHistoryPrev').disabled=historyPage===1;el('familyHistoryNext').disabled=!historyNext;
  }catch(e){insertEmpty(tbody,5,e.message);}
 }
@@ -145,9 +147,34 @@ el('familyMemberFind').onclick=()=>{memberPage=1;loadFamilyMembers();};el('famil
 el('familyHistoryFind').onclick=()=>{historyPage=1;loadFamilyHistory();};
 el('familyMembersPrev').onclick=()=>{if(memberPage>1){memberPage--;loadFamilyMembers();}};el('familyMembersNext').onclick=()=>{if(memberNext){memberPage++;loadFamilyMembers();}};
 el('familyHistoryPrev').onclick=()=>{if(historyPage>1){historyPage--;loadFamilyHistory();}};el('familyHistoryNext').onclick=()=>{if(historyNext){historyPage++;loadFamilyHistory();}};
-el('loginForm').addEventListener('submit',async e=>{e.preventDefault();note('');try{const r=await api('login',{body:{username:el('loginUser').value,password:el('loginPass').value}});el('loginPass').value='';user=r.user;setView(true);await home();}catch(err){note(err.message);}});
-el('logout').addEventListener('click',async()=>{try{await api('logout',{body:{}});}catch{}setView(false);user=null;});
+el('loginForm').addEventListener('submit',async e=>{e.preventDefault();const submit=e.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;note('');submit.disabled=true;submit.textContent='Входим…';try{const r=await api('login',{body:{username:el('loginUser').value,password:el('loginPass').value}});el('loginPass').value='';user=r.user;setView(true);await home();}catch(err){note(err.message);}finally{submit.disabled=false;submit.textContent='Войти в панель →';}});
+el('logout').addEventListener('click',async()=>{try{await api('logout',{body:{}});}catch{}logsRequest++;setView(false);user=null;});
 el('filterButton').onclick=()=>{page=1;load();};el('resetButton').onclick=()=>{el('search').value='';el('account').value='';el('dateFrom').value='';el('dateTo').value='';page=1;load();};
 el('prev').onclick=()=>{if(page>1){page--;load();}};el('next').onclick=()=>{if(next){page++;load();}};
-el('toggleNav').onclick=()=>el('shell').querySelector('.sidebar').classList.toggle('open');
+const mobileNav=window.matchMedia('(max-width: 1050px)');
+function setMenu(open,restoreFocus=false){
+ const menu=el('sidebar'),toggle=el('toggleNav'),wasOpen=menu.classList.contains('open');
+ const show=Boolean(open&&mobileNav.matches);
+ menu.classList.toggle('open',show);
+ el('menuBackdrop').classList.toggle('hidden',!show);
+ toggle.setAttribute('aria-expanded',String(show));
+ toggle.setAttribute('aria-label',show?'Закрыть меню':'Открыть меню');
+ menu.setAttribute('aria-hidden',String(mobileNav.matches&&!show));
+ menu.inert=Boolean(mobileNav.matches&&!show);
+ document.body.classList.toggle('nav-open',show);
+ if(show&&!wasOpen)menu.querySelector('.nav-item')?.focus({preventScroll:true});
+ if(!show&&wasOpen&&restoreFocus)toggle.focus({preventScroll:true});
+}
+el('toggleNav').onclick=()=>setMenu(!el('sidebar').classList.contains('open'),true);
+el('menuBackdrop').onclick=()=>setMenu(false,true);
+mobileNav.addEventListener('change',()=>setMenu(false));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&el('sidebar').classList.contains('open'))setMenu(false,true);});
+el('togglePassword').addEventListener('click',()=>{
+ const pass=el('loginPass'),btn=el('togglePassword'),shown=pass.type==='password';
+ pass.type=shown?'text':'password';btn.textContent=shown?'Скрыть':'Показать';
+ btn.setAttribute('aria-pressed',String(shown));btn.setAttribute('aria-label',shown?'Скрыть пароль':'Показать пароль');
+});
+el('search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();page=1;load();}});
+el('account').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();page=1;load();}});
+setMenu(false);
 initialize();
