@@ -1,6 +1,6 @@
 {
   "name": "vaynorix-logs",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Read-only VAYNORIX RP logs viewer for Vercel",
   "engines": {
@@ -10,6 +10,6 @@
     "mysql2": "^3.15.0"
   },
   "scripts": {
-    "check": "node --check api/index.js && node --check api/catalog.js && node --check public/app.js"
+    "check": "node --check api/index.js && node --check api/catalog.js && node --check api/antifraud.js && node --check public/app.js && node --check public/antifraud.js && node --test test/antifraud.test.js"
   }
 }
