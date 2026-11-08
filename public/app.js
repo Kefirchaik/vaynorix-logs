@@ -22,6 +22,7 @@ function renderNav(){const nav=el('navigation');nav.textContent='';let last='';
  if(c.id==='families'){const familyButton=cell('button','','nav-item');familyButton.id='familyNav';familyButton.dataset.section='family-overview';familyButton.append(cell('span','♜'),document.createTextNode('Семьи · Обзор'));familyButton.addEventListener('click',showFamilies);nav.append(familyButton);}
  const button=cell('button','', 'nav-item');button.dataset.section=c.id;
  button.append(cell('span','▣'),document.createTextNode(c.id==='families'?'История семей (журнал)':c.title));button.addEventListener('click',()=>switchLog(c.id));nav.append(button);}
+ nav.append(cell('div','БЕЗОПАСНОСТЬ','nav-group'));
  const riskButton=cell('button','','nav-item');riskButton.id='riskNav';riskButton.dataset.section='risk';riskButton.append(cell('span','⚑'),document.createTextNode('Антифрод · Проверки'));riskButton.addEventListener('click',()=>showRisk());nav.append(riskButton);
  if(user.role==='owner'){
   const button=cell('button','','nav-item');button.id='adminNav';button.append(cell('span','⚙'),document.createTextNode('Администраторы'));
