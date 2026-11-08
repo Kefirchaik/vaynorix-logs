@@ -52,3 +52,15 @@ npm run check
 ```
 
 После Deploy смотри **Vercel → Logs**. Если ошибка `ECONNREFUSED` / `ETIMEDOUT`, проверь MySQL host и разрешение удалённого подключения; `ER_NO_SUCH_TABLE` означает, что `SCHEMA.sql` не был выполнен в нужной БД.
+
+## Полноценный обзор семей (read-only)
+
+В боковом меню **Семьи · Обзор** отображаются:
+
+- Список из `familynew` с поиском по названию/ID/нику лидера, страницами и количеством участников/машин.
+- Лидер определяется по `familynew.owner = accounts.id`, участники — по `accounts.family_id = familynew.id`.
+- Баланс `familynew.money`, семейная валюта `familynew.moneti`, репутация, захваты и запасы.
+- Состав семьи: `accounts.id`, `name`, `level`, `family_rang`, `last_login`; названия рангов берутся из `familynew.rang_1...rang_5`.
+- История: `family_log` с именами участников из `accounts`, фильтрация по датам и 11 типам действий.
+
+Маршруты `family-list`, `family-detail`, `family-members` и `family-history` используют **только SELECT** и уже существующие таблицы. Дополнительный SQL, изменения схемы БД и новые Vercel Environment Variables не требуются.
