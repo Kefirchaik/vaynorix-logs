@@ -2,6 +2,7 @@
 const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
 const catalog = require('./catalog');
+const {riskOverview} = require('./antifraud');
 const COOKIE = 'vaynorix_session';
 let db;
 const required = ['DB_HOST','DB_NAME','DB_USER','DB_PASSWORD','SESSION_SECRET'];
@@ -287,6 +288,7 @@ module.exports=async function handler(req,res){
   if(action==='me'&&req.method==='GET')return json(res,200,{user:{username:user.username,role:user.role}});
   if(action==='catalog'&&req.method==='GET')return json(res,200,{catalog:Object.values(catalog).map(({id,title,group})=>({id,title,group}))});
   if(action==='logs'&&req.method==='GET')return await logs(req,res,user);
+  if(action==='risk-overview'&&req.method==='GET')return json(res,200,await riskOverview(connection(),req.query));
   if(action==='family-list'&&req.method==='GET')return await familyList(req,res);
   if(action==='family-detail'&&req.method==='GET')return await familyDetail(req,res);
   if(action==='family-members'&&req.method==='GET')return await familyMembers(req,res);
