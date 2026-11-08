@@ -215,9 +215,9 @@ module.exports=async function handler(req,res){
   if(action==='me'&&req.method==='GET')return json(res,200,{user:{username:user.username,role:user.role}});
   if(action==='catalog'&&req.method==='GET')return json(res,200,{catalog:Object.values(catalog).map(({id,title,group})=>({id,title,group}))});
   if(action==='logs'&&req.method==='GET')return await logs(req,res,user);
-  if(action==='admins'&&req.method==='GET'&&ensureOwner(user,res))return await adminList(res);
-  if(action==='admin-save'&&req.method==='POST'&&ensureOwner(user,res))return await editAdmin(req,res,false);
-  if(action==='admin-delete'&&req.method==='POST'&&ensureOwner(user,res))return await editAdmin(req,res,true);
+  if(action==='admins'&&req.method==='GET'){if(!ensureOwner(user,res))return;return await adminList(res);}
+  if(action==='admin-save'&&req.method==='POST'){if(!ensureOwner(user,res))return;return await editAdmin(req,res,false);}
+  if(action==='admin-delete'&&req.method==='POST'){if(!ensureOwner(user,res))return;return await editAdmin(req,res,true);}
   return reject(res,404,'Маршрут не найден');
  }catch(err){console.error('[VAYNORIX_API]',err.message);return reject(res,503,'Временная ошибка сервиса. Проверь Vercel Function Logs и переменные окружения.');}
 };
