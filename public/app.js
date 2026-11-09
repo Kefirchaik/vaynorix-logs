@@ -18,7 +18,8 @@ async function home(){
  const r=await api('catalog');catalog=r.catalog;renderNav();await showDashboard();
 }
 function renderNav(){const nav=el('navigation');nav.textContent='';let last='';
- const b=cell('button','','nav-item');b.id='dashboardNav';b.dataset.section='dashboard';b.append(cell('span','◈'),document.createTextNode('Обзор сервера'));b.addEventListener('click',showDashboard);nav.append(b);
+ const overviewButton=cell('button','','nav-item');overviewButton.id='dashboardNav';overviewButton.dataset.section='dashboard';overviewButton.append(cell('span','◈'),document.createTextNode('Обзор сервера'));overviewButton.addEventListener('click',showDashboard);nav.append(overviewButton);
+ const playerButton=cell('button','','nav-item');playerButton.id='playerNav';playerButton.dataset.section='player';playerButton.append(cell('span','♙'),document.createTextNode('Поиск игрока'));playerButton.addEventListener('click',()=>showPlayers());nav.append(playerButton);
  for(const c of catalog){if(c.group!==last){last=c.group;const h=cell('div',last.toUpperCase(),'nav-group');nav.append(h);}
  if(c.id==='families'){const familyButton=cell('button','','nav-item');familyButton.id='familyNav';familyButton.dataset.section='family-overview';familyButton.append(cell('span','♜'),document.createTextNode('Семьи · Обзор'));familyButton.addEventListener('click',showFamilies);nav.append(familyButton);}
  const button=cell('button','', 'nav-item');button.dataset.section=c.id;
@@ -31,7 +32,7 @@ function renderNav(){const nav=el('navigation');nav.textContent='';let last='';
  }
 }
 async function switchLog(section){
- el('dashboardView').classList.add('hidden');active=section;page=1;el('riskView').classList.add('hidden');el('familyView').classList.add('hidden');el('adminsView').classList.add('hidden');el('logsView').classList.remove('hidden');el('hero').classList.add('hidden');
+ el('dashboardView').classList.add('hidden');el('playerView').classList.add('hidden');active=section;page=1;el('riskView').classList.add('hidden');el('familyView').classList.add('hidden');el('adminsView').classList.add('hidden');el('logsView').classList.remove('hidden');el('hero').classList.add('hidden');
  el('search').value='';el('account').value='';el('dateFrom').value='';el('dateTo').value='';
  const c=catalog.find(x=>x.id===section);el('sectionTitle').textContent=c.title;el('sectionGroup').textContent=c.group.toUpperCase();el('breadcrumb').textContent=c.group+' / '+c.title;
  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.section===section));
@@ -61,7 +62,7 @@ async function load(){
 }
 async function showAdmins(){
  if(user.role!=='owner')return;
- el('dashboardView').classList.add('hidden');
+ el('dashboardView').classList.add('hidden');el('playerView').classList.add('hidden');
  el('riskView').classList.add('hidden');el('familyView').classList.add('hidden');el('adminsView').classList.remove('hidden');el('logsView').classList.add('hidden');el('hero').classList.add('hidden');el('sectionTitle').textContent='Администраторы';el('sectionGroup').textContent='УПРАВЛЕНИЕ ДОСТУПОМ';el('breadcrumb').textContent='Панель / Администраторы';
  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.id==='adminNav'));setMenu(false,true);
  const r=await api('admins'),parent=el('adminSlots');parent.textContent='';
@@ -87,7 +88,7 @@ const fmtNum=n=>Number(n||0).toLocaleString('ru-RU');
 function familyError(target,error){target.replaceChildren(cell('div',error.message||String(error),'family-error'));}
 function familyNavState(){document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.id==='familyNav'));}
 async function showFamilies(){
- el('dashboardView').classList.add('hidden');
+ el('dashboardView').classList.add('hidden');el('playerView').classList.add('hidden');
  el('riskView').classList.add('hidden');el('adminsView').classList.add('hidden');el('logsView').classList.add('hidden');el('familyView').classList.remove('hidden');el('hero').classList.add('hidden');
  el('sectionTitle').textContent='Управление просмотром семей';el('sectionGroup').textContent='СООБЩЕСТВО';el('sectionCaption').textContent='Участники, лидеры, деньги и история — только чтение';el('breadcrumb').textContent='Сообщество / Семьи';familyNavState();
  setMenu(false,true);familyListPage=1;chosenFamily=null;el('familySelected').classList.add('hidden');el('familyEmpty').classList.remove('hidden');await loadFamilies();

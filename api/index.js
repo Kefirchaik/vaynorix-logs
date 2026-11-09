@@ -2,6 +2,7 @@
 const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
 const catalog = require('./catalog');
+const playerTools = require('./player');
 const {riskOverview} = require('./antifraud');
 const {cachedOverview} = require('./overview');
 const COOKIE = 'vaynorix_session';
@@ -295,6 +296,7 @@ module.exports=async function handler(req,res){
   if(action==='family-detail'&&req.method==='GET')return await familyDetail(req,res);
   if(action==='family-members'&&req.method==='GET')return await familyMembers(req,res);
   if(action==='family-history'&&req.method==='GET')return await familyHistory(req,res);
+  if(['player-config','player-search','player-profile','player-rows','player-related'].includes(action)&&req.method==='GET'){const result=await playerTools.route(connection(),req.query);return json(res,result.status,result.body);}
   if(action==='admins'&&req.method==='GET'){if(!ensureOwner(user,res))return;return await adminList(res);}
   if(action==='admin-save'&&req.method==='POST'){if(!ensureOwner(user,res))return;return await editAdmin(req,res,false);}
   if(action==='admin-delete'&&req.method==='POST'){if(!ensureOwner(user,res))return;return await editAdmin(req,res,true);}
