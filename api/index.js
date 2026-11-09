@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const mysql = require('mysql2/promise');
 const catalog = require('./catalog');
 const {riskOverview} = require('./antifraud');
+const {cachedOverview} = require('./overview');
 const COOKIE = 'vaynorix_session';
 let db;
 const required = ['DB_HOST','DB_NAME','DB_USER','DB_PASSWORD','SESSION_SECRET'];
@@ -287,6 +288,7 @@ module.exports=async function handler(req,res){
   if(!user)return reject(res,401,'Требуется вход');
   if(action==='me'&&req.method==='GET')return json(res,200,{user:{username:user.username,role:user.role}});
   if(action==='catalog'&&req.method==='GET')return json(res,200,{catalog:Object.values(catalog).map(({id,title,group})=>({id,title,group}))});
+  if(action==='server-overview'&&req.method==='GET')return json(res,200,await cachedOverview(connection()));
   if(action==='logs'&&req.method==='GET')return await logs(req,res,user);
   if(action==='risk-overview'&&req.method==='GET')return json(res,200,await riskOverview(connection(),req.query));
   if(action==='family-list'&&req.method==='GET')return await familyList(req,res);

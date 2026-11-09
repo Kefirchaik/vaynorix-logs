@@ -13,6 +13,7 @@ const riskSeverity={high:'Приоритетная проверка',medium:'П�
 const riskNum=x=>Number(x||0).toLocaleString('ru-RU');
 function riskNode(tag,content,cls){const n=document.createElement(tag);if(content!==undefined)n.textContent=String(content);if(cls)n.className=cls;return n;}
 async function showRisk(){
+ el('dashboardView').classList.add('hidden');
  logsRequest++;el('logsView').classList.add('hidden');el('familyView').classList.add('hidden');el('adminsView').classList.add('hidden');el('riskView').classList.remove('hidden');el('hero').classList.add('hidden');
  el('sectionTitle').textContent='Антифрод · Проверка рисков';el('sectionGroup').textContent='БЕЗОПАСНОСТЬ';
  el('sectionCaption').textContent='Подозрительные операции и вероятные связи между аккаунтами — только чтение';
